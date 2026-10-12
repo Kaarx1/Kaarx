@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: imresamu/postgis:16-3.5
+    container_name: kaarx-postgres
+    environment:
+      POSTGRES_USER: kaarx
+      POSTGRES_PASSWORD: kaarx
+      POSTGRES_DB: kaarx
+    ports:
+      - '5432:5432'
+    volumes:
+      - kaarx-pgdata:/var/lib/postgresql/data
+      - ./infra/docker/initdb/20-test-db.sql:/docker-entrypoint-initdb.d/20-test-db.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U kaarx -d kaarx']
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    container_name: kaarx-redis
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  kaarx-pgdata:
