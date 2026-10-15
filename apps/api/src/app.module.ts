@@ -18,7 +18,6 @@ import { PricingModule } from './modules/pricing/pricing.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { SafetyModule } from './modules/safety/safety.module';
 import { StorageModule } from './modules/storage/storage.module';
-
 @Module({
   imports: [
     DatabaseModule,
