@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { todayIsoDateIST, type VehicleSnapshot } from '@kaarx/shared';
-import { DriversService } from '../src/modules/drivers/drivers.service';
+import { DriversService } from '../src/modules/drivers/services/drivers.service';
 import {
   insertApprovedDriver,
   isoDaysAgo,

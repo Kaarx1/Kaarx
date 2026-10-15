@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import { BookingEventsModule } from '../booking-events/booking-events.module';
-import { AdminSosController } from './admin-sos.controller';
-import { SafetyController } from './safety.controller';
-import { SafetyService } from './safety.service';
+import { AdminSosController } from './controllers/admin-sos.controller';
+import { SafetyController } from './controllers/safety.controller';
+import { SafetyService } from './services/safety.service';
 
 @Module({
   imports: [BookingEventsModule],

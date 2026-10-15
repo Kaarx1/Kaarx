@@ -15,7 +15,7 @@ import {
 } from '@kaarx/shared';
 import { connectSocket, nextEvent } from './sockets';
 import { AdminUser, Driver } from '../../src/database/entities';
-import { FIXED_OTP } from '../../src/modules/auth/otp.service';
+import { FIXED_OTP } from '../../src/modules/auth/services/otp.service';
 import { api, bearer, type TestContext } from './test-app';
 
 export const HYDERABAD_CITY_ID = '00000000-0000-0000-0000-000000000001';

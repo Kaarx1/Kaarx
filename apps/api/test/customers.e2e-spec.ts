@@ -1,5 +1,5 @@
 import { ConflictException } from '@nestjs/common';
-import { CustomersService } from '../src/modules/customers/customers.service';
+import { CustomersService } from '../src/modules/customers/services/customers.service';
 import { addVehicle, loginCustomer, loginReadyCustomer, VALID_VEHICLE } from './helpers/factories';
 import { api, bearer, createTestApp, resetState, type TestContext } from './helpers/test-app';
 

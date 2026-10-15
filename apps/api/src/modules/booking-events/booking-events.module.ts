@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { BookingEventsService } from './booking-events.service';
+import { BookingEventsService } from './services/booking-events.service';
 
 @Module({
   providers: [BookingEventsService],
