@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import { CustomersModule } from '../customers/customers.module';
 import { GeoModule } from '../geo/geo.module';
-import { PricingController } from './pricing.controller';
-import { PricingService } from './pricing.service';
+import { PricingController } from './controllers/pricing.controller';
+import { PricingService } from './services/pricing.service';
 
 @Module({
   imports: [GeoModule, CustomersModule],

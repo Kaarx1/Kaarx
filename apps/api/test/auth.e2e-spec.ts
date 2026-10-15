@@ -1,5 +1,5 @@
 import { normalizeIndianMobile } from '@kaarx/shared';
-import { FIXED_OTP } from '../src/modules/auth/otp.service';
+import { FIXED_OTP } from '../src/modules/auth/services/otp.service';
 import { toPublicDriver } from '../src/modules/drivers/driver.views';
 import {
   ADMIN_PASSWORD,

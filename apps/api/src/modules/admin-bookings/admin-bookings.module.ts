@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { BookingsModule } from '../bookings/bookings.module';
-import { AdminBookingsController } from './admin-bookings.controller';
-import { AdminBookingsService } from './admin-bookings.service';
+import { AdminBookingsController } from './controllers/admin-bookings.controller';
+import { AdminBookingsService } from './services/admin-bookings.service';
 
 @Module({
   imports: [BookingsModule],

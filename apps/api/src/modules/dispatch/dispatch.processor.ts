@@ -2,7 +2,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import type { Job } from 'bullmq';
 import { DISPATCH_QUEUE, DISPATCH_ROUND_JOB, type DispatchJobData } from './dispatch.constants';
-import { DispatchRoundService } from './dispatch-round.service';
+import { DispatchRoundService } from './services/dispatch-round.service';
 
 @Processor(DISPATCH_QUEUE, { concurrency: 5 })
 export class DispatchProcessor extends WorkerHost {

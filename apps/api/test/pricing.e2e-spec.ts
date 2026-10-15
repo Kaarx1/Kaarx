@@ -7,7 +7,7 @@ import {
   HaversineRoutingProvider,
   OlaMapsRoutingProvider,
 } from '../src/modules/geo/routing.provider';
-import { toRuleInput } from '../src/modules/pricing/pricing.service';
+import { toRuleInput } from '../src/modules/pricing/services/pricing.service';
 import { addVehicle, HYDERABAD_CITY_ID, loginReadyCustomer, PLACES } from './helpers/factories';
 import { api, bearer, createTestApp, resetState, type TestContext } from './helpers/test-app';
 

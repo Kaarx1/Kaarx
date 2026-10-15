@@ -2,6 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { dataSourceOptions } from './data-source';
 import { ENTITIES } from './entities';
+import { REPOSITORIES } from './repositories';
 
 @Global()
 @Module({
@@ -9,6 +10,7 @@ import { ENTITIES } from './entities';
     TypeOrmModule.forRoot({ ...dataSourceOptions, retryAttempts: 2, retryDelay: 1000 }),
     TypeOrmModule.forFeature(ENTITIES),
   ],
-  exports: [TypeOrmModule],
+  providers: REPOSITORIES,
+  exports: [TypeOrmModule, ...REPOSITORIES],
 })
 export class DatabaseModule {}

@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { env } from '../../config/env';
-import { AdminAuthController } from './admin-auth.controller';
-import { AuthController } from './auth.controller';
-import { AuthService } from './auth.service';
-import { OtpService } from './otp.service';
+import { AdminAuthController } from './controllers/admin-auth.controller';
+import { AuthController } from './controllers/auth.controller';
+import { AuthService } from './services/auth.service';
+import { OtpService } from './services/otp.service';
 import { ConsoleSmsProvider, Msg91SmsProvider, SmsProvider } from './sms.provider';
-import { TokensService } from './tokens.service';
+import { TokensService } from './services/tokens.service';
 
 @Module({
   controllers: [AuthController, AdminAuthController],

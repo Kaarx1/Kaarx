@@ -5,7 +5,7 @@ import {
   OlaMapsRoutingProvider,
   RoutingProvider,
 } from './routing.provider';
-import { ZonesService } from './zones.service';
+import { ZonesService } from './services/zones.service';
 
 function createRoutingProvider(): RoutingProvider {
   if (env.ROUTING_PROVIDER === 'ola') {
