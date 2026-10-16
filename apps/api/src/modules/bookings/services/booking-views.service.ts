@@ -6,8 +6,8 @@ import {
   type PhotoPhase,
   type PhotoSide,
 } from '@kaarx/shared';
-import { DataSource } from 'typeorm';
 import type { Booking } from '../../../database/entities';
+import { TripPhotoRepository } from '../../../database/repositories';
 import { CustomersService } from '../../customers/services/customers.service';
 import { toPublicDriver } from '../../drivers/driver.views';
 import { DriversService } from '../../drivers/services/drivers.service';
@@ -17,7 +17,7 @@ import { toCustomerView, toDriverView } from '../booking.views';
 @Injectable()
 export class BookingViewsService {
   constructor(
-    private readonly ds: DataSource,
+    private readonly photoRepo: TripPhotoRepository,
     private readonly drivers: DriversService,
     private readonly customers: CustomersService,
     private readonly pricing: PricingService,
@@ -47,10 +47,7 @@ export class BookingViewsService {
   }
 
   async photosDone(bookingId: string): Promise<{ preTrip: PhotoSide[]; postTrip: PhotoSide[] }> {
-    const rows = (await this.ds.query(
-      'select distinct phase, side from trip_photos where booking_id = $1',
-      [bookingId],
-    )) as { phase: PhotoPhase; side: PhotoSide }[];
+    const rows = await this.photoRepo.findSidesByBooking(bookingId);
     const sidesFor = (phase: PhotoPhase): PhotoSide[] =>
       PHOTO_SIDES.filter((side) => rows.some((row) => row.phase === phase && row.side === side));
     return { preTrip: sidesFor('pre_trip'), postTrip: sidesFor('post_trip') };

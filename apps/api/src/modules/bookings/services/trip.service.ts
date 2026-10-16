@@ -7,12 +7,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import type { Redis } from 'ioredis';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import {
-  LIVE_BOOKING_STATUSES,
   REALTIME_EVENTS,
   REQUIRED_PHOTO_SIDES,
   canTransition,
@@ -30,7 +28,13 @@ import {
 } from '@kaarx/shared';
 import type { AuthUser } from '../../../common/auth/auth-user';
 import { REDIS } from '../../../common/redis.module';
-import { Booking } from '../../../database/entities';
+import type { Booking } from '../../../database/entities';
+import {
+  BookingOfferRepository,
+  BookingRepository,
+  DriverLocationRepository,
+  TripPhotoRepository,
+} from '../../../database/repositories';
 import { BookingEventsService } from '../../booking-events/services/booking-events.service';
 import { DispatchService } from '../../dispatch/services/dispatch.service';
 import { DriversService } from '../../drivers/services/drivers.service';
@@ -54,7 +58,10 @@ export interface TripPhotoSides {
 export class TripService {
   constructor(
     private readonly ds: DataSource,
-    @InjectRepository(Booking) private readonly bookings: Repository<Booking>,
+    private readonly bookingRepo: BookingRepository,
+    private readonly offerRepo: BookingOfferRepository,
+    private readonly photoRepo: TripPhotoRepository,
+    private readonly locationRepo: DriverLocationRepository,
     @Inject(REDIS) private readonly redis: Redis,
     private readonly views: BookingViewsService,
     private readonly events: BookingEventsService,
@@ -66,20 +73,18 @@ export class TripService {
   ) {}
 
   async getCurrentForDriver(user: AuthUser): Promise<{ booking: DriverBookingView | null }> {
-    const booking = await this.bookings.findOne({
-      where: [
-        { driverId: user.id, status: In([...LIVE_BOOKING_STATUSES]) },
-        { driverId: user.id, status: 'completed', paymentStatus: 'unpaid' },
-      ],
-      order: { createdAt: 'DESC' },
-    });
+    const booking = await this.bookingRepo.findCurrentByDriver(user.id);
     return { booking: booking ? await this.views.driverView(booking) : null };
   }
 
   async markArrived(user: AuthUser, bookingId: string): Promise<DriverBookingView> {
     const { booking } = await this.mutateOwn(user, bookingId, async (b, manager) => {
       this.requireTransition(b, 'driver_arrived');
-      await manager.update(Booking, b.id, { status: 'driver_arrived', arrivedAt: new Date() });
+      await this.bookingRepo.update(
+        b.id,
+        { status: 'driver_arrived', arrivedAt: new Date() },
+        manager,
+      );
       await this.events.record(b.id, 'trip.arrived', user, {}, manager);
     });
     return this.views.driverView(booking);
@@ -113,21 +118,18 @@ export class TripService {
     }
     await this.ds.transaction(async (manager) => {
       for (const photo of input.photos) {
-        await manager.query(
-          `insert into trip_photos (booking_id, driver_id, phase, side, url, taken_at, location)
-           values ($1, $2, $3::photo_phase, $4::photo_side, $5, $6,
-                   case when $7::float8 is null or $8::float8 is null then null
-                        else ST_SetSRID(ST_MakePoint($8::float8, $7::float8), 4326)::geography end)`,
-          [
-            booking.id,
-            user.id,
-            input.phase,
-            photo.side,
-            photo.key,
-            photo.takenAt,
-            photo.lat ?? null,
-            photo.lng ?? null,
-          ],
+        await this.photoRepo.insert(
+          {
+            bookingId: booking.id,
+            driverId: user.id,
+            phase: input.phase,
+            side: photo.side,
+            url: photo.key,
+            takenAt: photo.takenAt,
+            lat: photo.lat ?? null,
+            lng: photo.lng ?? null,
+          },
+          manager,
         );
       }
       await this.events.record(
@@ -159,12 +161,16 @@ export class TripService {
       const waitingS = b.arrivedAt
         ? Math.max(0, Math.floor((startedAt.getTime() - b.arrivedAt.getTime()) / 1000))
         : 0;
-      await manager.update(Booking, b.id, {
-        status: 'in_progress',
-        otpVerifiedAt: startedAt,
-        startedAt,
-        waitingS,
-      });
+      await this.bookingRepo.update(
+        b.id,
+        {
+          status: 'in_progress',
+          otpVerifiedAt: startedAt,
+          startedAt,
+          waitingS,
+        },
+        manager,
+      );
       await this.events.record(b.id, 'trip.started', user, { waitingS }, manager);
     });
     return this.views.driverView(booking);
@@ -181,7 +187,7 @@ export class TripService {
       );
       const endedAt = new Date();
       const startedAt = b.startedAt ?? endedAt;
-      const trace = await this.tracedDistance(manager, b, startedAt);
+      const trace = await this.locationRepo.getTracedDistance(b.id, user.id, startedAt, manager);
       const estimatedDistanceM = b.estimatedDistanceM ?? 0;
       const usedTrace =
         trace.points >= 2 && trace.meters <= estimatedDistanceM * MAX_TRACE_TO_ESTIMATE;
@@ -189,16 +195,20 @@ export class TripService {
       const rule = toRuleInput(await this.pricing.getRule(b.pricingRuleId));
       const breakdown = computeFare(rule, { distanceM, waitingS: b.waitingS });
       const settlement = computeSettlement(breakdown.totalPaise, rule.platformCommissionPct);
-      await manager.update(Booking, b.id, {
-        status: 'completed',
-        endedAt,
-        actualDistanceM: distanceM,
-        actualDurationS: Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000),
-        finalFarePaise: breakdown.totalPaise,
-        finalBreakdown: breakdown,
-        platformFeePaise: settlement.platformFeePaise,
-        driverEarningPaise: settlement.driverEarningPaise,
-      });
+      await this.bookingRepo.update(
+        b.id,
+        {
+          status: 'completed',
+          endedAt,
+          actualDistanceM: distanceM,
+          actualDurationS: Math.floor((endedAt.getTime() - startedAt.getTime()) / 1000),
+          finalFarePaise: breakdown.totalPaise,
+          finalBreakdown: breakdown,
+          platformFeePaise: settlement.platformFeePaise,
+          driverEarningPaise: settlement.driverEarningPaise,
+        },
+        manager,
+      );
       await this.drivers.incrementTrips(user.id, manager);
       await this.events.record(
         b.id,
@@ -230,7 +240,7 @@ export class TripService {
       if (b.status !== 'completed' || b.paymentStatus !== 'unpaid') {
         throw new ConflictException('This trip is not waiting for payment');
       }
-      await manager.update(Booking, b.id, { paymentStatus: 'paid', paidAt: new Date() });
+      await this.bookingRepo.update(b.id, { paymentStatus: 'paid', paidAt: new Date() }, manager);
       await this.events.record(
         b.id,
         'payment.cash_collected',
@@ -251,7 +261,7 @@ export class TripService {
   }
 
   private async findOwn(driverId: string, bookingId: string): Promise<Booking> {
-    const booking = await this.bookings.findOneBy({ id: bookingId, driverId });
+    const booking = await this.bookingRepo.findOwnedByDriver(driverId, bookingId);
     if (!booking) throw new NotFoundException('Trip not found');
     return booking;
   }
@@ -261,10 +271,7 @@ export class TripService {
     driverId: string,
     bookingId: string,
   ): Promise<Booking> {
-    const booking = await manager.findOne(Booking, {
-      where: { id: bookingId, driverId },
-      lock: { mode: 'pessimistic_write' },
-    });
+    const booking = await this.bookingRepo.lockOwnedByDriver(driverId, bookingId, manager);
     if (!booking) throw new NotFoundException('Trip not found');
     return booking;
   }
@@ -278,7 +285,7 @@ export class TripService {
     const result = await this.ds.transaction(async (manager) =>
       work(await this.lockOwn(manager, user.id, bookingId), manager),
     );
-    const booking = await this.bookings.findOneByOrFail({ id: bookingId });
+    const booking = await this.bookingRepo.findByIdOrFail(bookingId);
     await this.notifyCustomer(booking);
     return { booking, result };
   }
@@ -308,14 +315,8 @@ export class TripService {
     if (missingSides.length > 0) throw new ConflictException({ message, missingSides });
   }
 
-  private async photoSides(
-    bookingId: string,
-    manager: EntityManager = this.ds.manager,
-  ): Promise<TripPhotoSides> {
-    const rows: { phase: PhotoPhase; side: PhotoSide }[] = await manager.query(
-      `select distinct phase, side from trip_photos where booking_id = $1 order by phase, side`,
-      [bookingId],
-    );
+  private async photoSides(bookingId: string, manager?: EntityManager): Promise<TripPhotoSides> {
+    const rows = await this.photoRepo.findSidesByBooking(bookingId, manager);
     return {
       preTrip: rows.filter((row) => row.phase === 'pre_trip').map((row) => row.side),
       postTrip: rows.filter((row) => row.phase === 'post_trip').map((row) => row.side),
@@ -338,23 +339,6 @@ export class TripService {
     await this.redis.del(key);
   }
 
-  private async tracedDistance(
-    manager: EntityManager,
-    booking: Booking,
-    since: Date,
-  ): Promise<{ points: number; meters: number }> {
-    const rows: { points: number; meters: number | null }[] = await manager.query(
-      `select count(*)::int as points,
-              case when count(*) >= 2
-                   then ST_Length(ST_MakeLine(location::geometry order by recorded_at)::geography)
-              end as meters
-         from driver_locations
-        where booking_id = $1 and driver_id = $2 and recorded_at >= $3`,
-      [booking.id, booking.driverId, since],
-    );
-    return { points: rows[0]?.points ?? 0, meters: rows[0]?.meters ?? 0 };
-  }
-
   async cancelByDriver(
     user: AuthUser,
     bookingId: string,
@@ -366,28 +350,32 @@ export class TripService {
       async (b, manager) => {
         const payload = { reason: input.reason, notes: input.notes ?? null };
         if (b.status === 'assigned') {
-          await manager.update(Booking, b.id, {
-            status: 'searching',
-            driverId: null,
-            assignedAt: null,
-            dispatchRound: 0,
-          });
-          // Frees booking_offers_one_accepted_uidx so the next driver can accept.
-          await manager.query(
-            `update booking_offers set response = 'declined', responded_at = now(), decline_reason = $3
-            where booking_id = $1 and driver_id = $2 and response = 'accepted'`,
-            [b.id, user.id, `released: ${input.reason}`],
+          await this.bookingRepo.update(
+            b.id,
+            {
+              status: 'searching',
+              driverId: null,
+              assignedAt: null,
+              dispatchRound: 0,
+            },
+            manager,
           );
+          // Frees booking_offers_one_accepted_uidx so the next driver can accept.
+          await this.offerRepo.declineAccepted(b.id, user.id, `released: ${input.reason}`, manager);
           await this.events.record(b.id, 'booking.released', user, payload, manager);
           return b.dispatchRound;
         }
         if (b.status === 'driver_arrived') {
-          await manager.update(Booking, b.id, {
-            status: 'cancelled',
-            cancelledBy: 'driver',
-            cancelReason: input.notes ? `${input.reason}: ${input.notes}` : input.reason,
-            cancelledAt: new Date(),
-          });
+          await this.bookingRepo.update(
+            b.id,
+            {
+              status: 'cancelled',
+              cancelledBy: 'driver',
+              cancelReason: input.notes ? `${input.reason}: ${input.notes}` : input.reason,
+              cancelledAt: new Date(),
+            },
+            manager,
+          );
           await this.events.record(
             b.id,
             'booking.cancelled',

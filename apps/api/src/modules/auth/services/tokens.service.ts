@@ -1,12 +1,11 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
 import type { AdminRole, Role, TokenPair } from '@kaarx/shared';
 import { SESSION_EXPIRED, type AccessTokenPayload } from '../../../common/auth/auth-user';
 import { env } from '../../../config/env';
-import { RefreshToken } from '../../../database/entities';
+import type { RefreshToken } from '../../../database/entities';
+import { RefreshTokenRepository } from '../../../database/repositories';
 
 export interface TokenSubject {
   id: string;
@@ -21,7 +20,7 @@ const sha256 = (value: string): string => createHash('sha256').update(value).dig
 export class TokensService {
   constructor(
     private readonly jwt: JwtService,
-    @InjectRepository(RefreshToken) private readonly refreshTokens: Repository<RefreshToken>,
+    private readonly tokenRepo: RefreshTokenRepository,
   ) {}
 
   async issue(subject: TokenSubject): Promise<TokenPair> {
@@ -32,7 +31,7 @@ export class TokensService {
     };
     const accessToken = await this.jwt.signAsync(payload);
     const refreshToken = randomBytes(32).toString('base64url');
-    await this.refreshTokens.insert({
+    await this.tokenRepo.insert({
       subjectType: subject.role,
       subjectId: subject.id,
       tokenHash: sha256(refreshToken),
@@ -42,18 +41,14 @@ export class TokensService {
   }
 
   async consume(raw: string): Promise<RefreshToken> {
-    const row = await this.refreshTokens.findOneBy({ tokenHash: sha256(raw) });
+    const row = await this.tokenRepo.findByHash(sha256(raw));
     if (!row) throw new UnauthorizedException(SESSION_EXPIRED);
     if (row.revokedAt !== null) {
       await this.revokeAllForSubject(row.subjectType, row.subjectId);
       throw new UnauthorizedException(SESSION_EXPIRED);
     }
     if (row.expiresAt.getTime() <= Date.now()) throw new UnauthorizedException(SESSION_EXPIRED);
-    const result = await this.refreshTokens.update(
-      { id: row.id, revokedAt: IsNull() },
-      { revokedAt: new Date() },
-    );
-    if (!result.affected) {
+    if (!(await this.tokenRepo.revokeById(row.id))) {
       // Lost a race with another refresh of the same token: treat as reuse.
       await this.revokeAllForSubject(row.subjectType, row.subjectId);
       throw new UnauthorizedException(SESSION_EXPIRED);
@@ -62,16 +57,10 @@ export class TokensService {
   }
 
   async revoke(raw: string): Promise<void> {
-    await this.refreshTokens.update(
-      { tokenHash: sha256(raw), revokedAt: IsNull() },
-      { revokedAt: new Date() },
-    );
+    await this.tokenRepo.revokeByHash(sha256(raw));
   }
 
   async revokeAllForSubject(role: Role, subjectId: string): Promise<void> {
-    await this.refreshTokens.update(
-      { subjectType: role, subjectId, revokedAt: IsNull() },
-      { revokedAt: new Date() },
-    );
+    await this.tokenRepo.revokeAllForSubject(role, subjectId);
   }
 }

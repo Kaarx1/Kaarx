@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { LatLng } from '@kaarx/shared';
-import { ZoneRepository, type ActiveZoneRow } from '../../../database/repositories/zone.repository';
+import { ZoneRepository, type ActiveZoneRow } from '../../../database/repositories';
 
 @Injectable()
 export class ZonesService {
@@ -12,5 +12,9 @@ export class ZonesService {
 
   isWithinDestinationRadius(zoneId: string, point: LatLng): Promise<boolean> {
     return this.zoneRepo.hasPointWithinDestinationRadius(zoneId, point);
+  }
+
+  findActiveCityIds(): Promise<string[]> {
+    return this.zoneRepo.findActiveCityIds();
   }
 }

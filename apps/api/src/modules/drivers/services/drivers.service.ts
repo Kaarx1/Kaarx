@@ -21,7 +21,11 @@ import {
 import { AuditService } from '../../../common/audit/audit.service';
 import { isUniqueViolation } from '../../../common/db-errors';
 import type { Driver, DriverDocument } from '../../../database/entities';
-import { DriverDocumentRepository, DriverRepository } from '../../../database/repositories';
+import {
+  BookingRepository,
+  DriverDocumentRepository,
+  DriverRepository,
+} from '../../../database/repositories';
 import { canDrive, toDriverSelfView } from '../driver.views';
 
 export const DRIVER_NOT_APPROVED = 'Your account is not approved yet. Kaarx will contact you.';
@@ -57,6 +61,7 @@ export class DriversService {
   constructor(
     private readonly driverRepo: DriverRepository,
     private readonly documentRepo: DriverDocumentRepository,
+    private readonly bookingRepo: BookingRepository,
     private readonly dataSource: DataSource,
     private readonly audit: AuditService,
   ) {}
@@ -340,7 +345,7 @@ export class DriversService {
   async findLiveBooking(
     driverId: string,
   ): Promise<{ bookingId: string; customerId: string } | null> {
-    const booking = await this.driverRepo.findLiveBookingByDriver(driverId);
+    const booking = await this.bookingRepo.findLiveByDriver(driverId);
     return booking ? { bookingId: booking.id, customerId: booking.customerId } : null;
   }
 

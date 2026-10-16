@@ -9,4 +9,8 @@ export class DispatchSettingsRepository {
   private repo(manager?: EntityManager) {
     return (manager ?? this.dataSource.manager).getRepository(DispatchSettings);
   }
+
+  findByCityOrFail(cityId: string, manager?: EntityManager): Promise<DispatchSettings> {
+    return this.repo(manager).findOneByOrFail({ cityId });
+  }
 }

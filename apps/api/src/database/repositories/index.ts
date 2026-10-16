@@ -16,6 +16,22 @@ import { TripPhotoRepository } from './trip-photo.repository';
 import { VehicleRepository } from './vehicle.repository';
 import { ZoneRepository } from './zone.repository';
 
+export type { BookingEventRow } from './booking-event.repository';
+export type {
+  DeclinedOfferRow,
+  ExpiredOfferRow,
+  OfferDetailRow,
+  OfferStateRow,
+} from './booking-offer.repository';
+export type {
+  AdminBookingPageRow,
+  AdminBookingSearch,
+  BookingDispatchStateRow,
+} from './booking.repository';
+export type { SosRow } from './sos-event.repository';
+export type { TripPhotoRow, TripPhotoSideRow } from './trip-photo.repository';
+export type { ActiveZoneRow } from './zone.repository';
+
 export {
   AdminUserRepository,
   BookingEventRepository,

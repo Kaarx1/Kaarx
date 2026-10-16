@@ -4,9 +4,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
 import * as argon2 from 'argon2';
-import { Repository } from 'typeorm';
 import type {
   AdminAuthResponse,
   AdminLoginInput,
@@ -18,7 +16,12 @@ import type {
   TokenPair,
   VerifyOtpInput,
 } from '@kaarx/shared';
-import { AdminUser, Customer, Driver } from '../../../database/entities';
+import type { AdminUser } from '../../../database/entities';
+import {
+  AdminUserRepository,
+  CustomerRepository,
+  DriverRepository,
+} from '../../../database/repositories';
 import { toCustomerProfile } from '../../customers/customer.views';
 import { toDriverSelfView } from '../../drivers/driver.views';
 import { OtpService } from './otp.service';
@@ -35,9 +38,9 @@ export function toAdminProfile(admin: AdminUser): AdminProfile {
 @Injectable()
 export class AuthService {
   constructor(
-    @InjectRepository(Customer) private readonly customers: Repository<Customer>,
-    @InjectRepository(Driver) private readonly drivers: Repository<Driver>,
-    @InjectRepository(AdminUser) private readonly admins: Repository<AdminUser>,
+    private readonly customerRepo: CustomerRepository,
+    private readonly driverRepo: DriverRepository,
+    private readonly adminRepo: AdminUserRepository,
     private readonly otp: OtpService,
     private readonly tokens: TokensService,
   ) {}
@@ -45,8 +48,8 @@ export class AuthService {
   async requestOtp({ phone, app }: RequestOtpInput): Promise<void> {
     const account =
       app === 'driver'
-        ? await this.drivers.findOneBy({ phone })
-        : await this.customers.findOneBy({ phone });
+        ? await this.driverRepo.findByPhone(phone)
+        : await this.customerRepo.findByPhone(phone);
     if (app === 'driver' && !account) throw new NotFoundException(DRIVER_NOT_REGISTERED);
     if (account?.status === 'blocked') throw new ForbiddenException(ACCOUNT_BLOCKED);
     await this.otp.issue(app, phone);
@@ -55,14 +58,14 @@ export class AuthService {
   async verifyOtp({ phone, app, code }: VerifyOtpInput): Promise<AuthResponse> {
     await this.otp.verify(app, phone, code);
     if (app === 'driver') {
-      const driver = await this.drivers.findOneBy({ phone });
+      const driver = await this.driverRepo.findByPhone(phone);
       if (!driver) throw new NotFoundException(DRIVER_NOT_REGISTERED);
       if (driver.status === 'blocked') throw new ForbiddenException(ACCOUNT_BLOCKED);
       const pair = await this.tokens.issue({ id: driver.id, role: 'driver' });
       return { ...pair, role: 'driver', profile: toDriverSelfView(driver) };
     }
-    await this.customers.createQueryBuilder().insert().values({ phone }).orIgnore().execute();
-    const customer = await this.customers.findOneByOrFail({ phone });
+    await this.customerRepo.insertIfMissing(phone);
+    const customer = await this.customerRepo.findByPhoneOrFail(phone);
     if (customer.status === 'blocked') throw new ForbiddenException(ACCOUNT_BLOCKED);
     const pair = await this.tokens.issue({ id: customer.id, role: 'customer' });
     return { ...pair, role: 'customer', profile: toCustomerProfile(customer) };
@@ -83,21 +86,18 @@ export class AuthService {
   }
 
   async adminLogin({ email, password }: AdminLoginInput): Promise<AdminAuthResponse> {
-    const admin = await this.admins
-      .createQueryBuilder('admin')
-      .where('lower(admin.email) = lower(:email)', { email })
-      .getOne();
+    const admin = await this.adminRepo.findByEmail(email);
     if (!admin || !(await argon2.verify(admin.passwordHash, password))) {
       throw new UnauthorizedException('Incorrect email or password');
     }
     if (admin.status !== 'active') throw new ForbiddenException(ACCOUNT_BLOCKED);
-    await this.admins.update(admin.id, { lastLoginAt: new Date() });
+    await this.adminRepo.update(admin.id, { lastLoginAt: new Date() });
     const pair = await this.tokens.issue({ id: admin.id, role: 'admin', adminRole: admin.role });
     return { ...pair, profile: toAdminProfile(admin) };
   }
 
   async getAdminProfile(adminId: string): Promise<AdminProfile> {
-    const admin = await this.admins.findOneBy({ id: adminId });
+    const admin = await this.adminRepo.findById(adminId);
     if (!admin) throw new NotFoundException('Admin not found');
     return toAdminProfile(admin);
   }
@@ -107,13 +107,11 @@ export class AuthService {
     id: string,
   ): Promise<{ status: string; subject: TokenSubject } | null> {
     if (role === 'admin') {
-      const admin = await this.admins.findOneBy({ id });
+      const admin = await this.adminRepo.findById(id);
       return admin ? { status: admin.status, subject: { id, role, adminRole: admin.role } } : null;
     }
     const account =
-      role === 'driver'
-        ? await this.drivers.findOneBy({ id })
-        : await this.customers.findOneBy({ id });
+      role === 'driver' ? await this.driverRepo.findById(id) : await this.customerRepo.findById(id);
     return account ? { status: account.status, subject: { id, role } } : null;
   }
 }

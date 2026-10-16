@@ -5,7 +5,7 @@ import {
   type VehicleSnapshot,
   type VerificationStatus,
 } from '@kaarx/shared';
-import { Booking, Driver } from '../entities';
+import { Driver } from '../entities';
 
 @Injectable()
 export class DriverRepository {
@@ -17,6 +17,10 @@ export class DriverRepository {
 
   findById(id: string, manager?: EntityManager): Promise<Driver | null> {
     return this.repo(manager).findOneBy({ id });
+  }
+
+  findByPhone(phone: string, manager?: EntityManager): Promise<Driver | null> {
+    return this.repo(manager).findOneBy({ phone });
   }
 
   findByIds(ids: string[], manager?: EntityManager): Promise<Driver[]> {
@@ -78,15 +82,5 @@ export class DriverRepository {
       ],
     );
     return rows.map((row) => row.id);
-  }
-
-  findLiveBookingByDriver(
-    driverId: string,
-    manager?: EntityManager,
-  ): Promise<Pick<Booking, 'id' | 'customerId'> | null> {
-    return (manager ?? this.dataSource.manager).getRepository(Booking).findOne({
-      select: { id: true, customerId: true },
-      where: { driverId, status: In([...LIVE_BOOKING_STATUSES]) },
-    });
   }
 }

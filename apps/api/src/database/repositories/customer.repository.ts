@@ -14,6 +14,18 @@ export class CustomerRepository {
     return this.repo(manager).findOneBy({ id });
   }
 
+  findByPhone(phone: string, manager?: EntityManager): Promise<Customer | null> {
+    return this.repo(manager).findOneBy({ phone });
+  }
+
+  findByPhoneOrFail(phone: string, manager?: EntityManager): Promise<Customer> {
+    return this.repo(manager).findOneByOrFail({ phone });
+  }
+
+  async insertIfMissing(phone: string, manager?: EntityManager): Promise<void> {
+    await this.repo(manager).createQueryBuilder().insert().values({ phone }).orIgnore().execute();
+  }
+
   lockById(id: string, manager: EntityManager): Promise<Customer | null> {
     return this.repo(manager).findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
   }
